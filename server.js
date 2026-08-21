@@ -34,7 +34,7 @@ app.post('/api/clear', (req,res) => {
 
 // API - Checkin Async
 app.post('/api/checkin', (req,res) => {
-  const { attendeeId } = req.body;
+  const attendeeId = req.body.attendeeId || req.body.attendee_id || req.body.id || req.body.name;
   if (!attendeeId) return res.status(400).json({error:'Missing ID'});
 
   if (db.has(attendeeId) && db.get(attendeeId).status === 'checked_in') {
