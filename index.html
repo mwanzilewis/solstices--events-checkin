@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solstice Check-In Kiosk - ASYNC</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <h1>🎫 Solstice Events</h1>
+  <p class="subtitle">Multi-Day Tech Conference - Check-In Kiosk<br><span>ASYNC MODE - Vendor Queue + Webhook</span></p>
+
+  <div class="scanner">
+    <input id="attendeeId" placeholder="Scan QR - Enter ID e.g. ATT-001" value="ATT-001" autofocus>
+    <button id="scanBtn" onclick="scan()">SCAN & CHECK-IN</button>
+  </div>
+
+  <div id="statusCard" class="card idle">
+    <div id="statusIcon">💤</div>
+    <div id="statusText">Ready to scan...</div>
+    <div id="statusSub">Waiting for QR</div>
+  </div>
+
+  <div class="actions">
+    <button class="secondary" onclick="runPivotTest()">RUN PIVOT TEST (3 attendees + duplicate)</button>
+    <button class="secondary" onclick="clearDB()">CLEAR DB</button>
+  </div>
+
+  <div class="log-section">
+    <h3>📋 Attendees Database (Live)</h3>
+    <pre id="dbView">Loading...</pre>
+  </div>
+
+  <div class="log-section">
+    <h3>🔔 Webhook Log</h3>
+    <div id="webhookLog">No callbacks yet...</div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
