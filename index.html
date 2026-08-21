@@ -1,43 +1,33 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Solstice Check-In Kiosk - ASYNC</title>
-<link rel="stylesheet" href="style.css">
-</head>
-<body>
-<div class="container">
-  <h1>🎫 Solstice Events</h1>
-  <p class="subtitle">Multi-Day Tech Conference - Check-In Kiosk<br><span>ASYNC MODE - Vendor Queue + Webhook</span></p>
-
-  <div class="scanner">
-    <input id="attendeeId" placeholder="Scan QR - Enter ID e.g. ATT-001" value="ATT-001" autofocus>
-    <button id="scanBtn" onclick="scan()">SCAN & CHECK-IN</button>
-  </div>
-
-  <div id="statusCard" class="card idle">
-    <div id="statusIcon">💤</div>
-    <div id="statusText">Ready to scan...</div>
-    <div id="statusSub">Waiting for QR</div>
-  </div>
-
-  <div class="actions">
-    <button class="secondary" onclick="runPivotTest()">RUN PIVOT TEST (3 attendees + duplicate)</button>
-    <button class="secondary" onclick="clearDB()">CLEAR DB</button>
-  </div>
-
-  <div class="log-section">
-    <h3>📋 Attendees Database (Live)</h3>
-    <pre id="dbView">Loading...</pre>
-  </div>
-
-  <div class="log-section">
-    <h3>🔔 Webhook Log</h3>
-    <div id="webhookLog">No callbacks yet...</div>
-  </div>
-</div>
-
-<script src="app.js"></script>
-</body>
-</html>
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Solstice Check-In</title>
+<style>body{font-family:Arial;padding:20px;background:#0f172a;color:white}input{padding:10px;font-size:18px;width:250px}button{padding:10px 15px;font-size:16px;margin:5px;cursor:pointer;font-weight:bold}#card{padding:20px;margin:20px 0;border-radius:10px;font-size:18px;font-weight:bold}#log{background:#1e293b;padding:15px;white-space:pre-wrap}.yellow{background:#facc15;color:black}.green{background:#22c55e;color:black}.red{background:#ef4444;color:white}</style>
+</head><body>
+<h1>🎟️ Solstice Events</h1><p><b>ASYNC MODE - Vendor Queue + Webhook + Duplicate Block</b></p>
+<input id="attendeeId" placeholder="ATT-001" value="ATT-001">
+<button onclick="scan()">SCAN & CHECK-IN</button>
+<div id="card">Ready to scan... Waiting for QR</div>
+<button onclick="runPivot()">RUN PIVOT TEST (3 + duplicate)</button>
+<button onclick="clearDB()">CLEAR DB</button>
+<h3>Attendees (Live)</h3><div id="live">Loading...</div>
+<h3>Webhook Log</h3><div id="hook">No callbacks yet...</div>
+<script>
+let db={};
+async function scan(){
+  const id=document.getElementById('attendeeId').value.trim(); if(!id)return;
+  const card=document.getElementById('card'); card.className='yellow'; card.innerHTML='⏳ PENDING: '+id+'<br>Queued to vendor queue...<br>Status: PRINT_PENDING';
+  try{
+    const res=await fetch('/api/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({attendeeId:id})});
+    const data=await res.json();
+    if(res.status===409){card.className='red'; card.innerHTML='🛑 DUPLICATE BLOCKED: '+id+'<br>Status: already_checked_in<br>Message: '+data.message; load();}
+    else{setTimeout(()=>{card.className='green'; card.innerHTML='✅ CHECKED_IN: '+id+'<br>Job: '+data.jobId+'<br>Status: checked_in'; load();},2200);}
+  }catch(e){card.className='red'; card.textContent='ERROR: '+e.message;}
+}
+async function load(){try{const r=await fetch('/api/attendees'); const d=await r.json(); document.getElementById('live').textContent=JSON.stringify(d,null,2);}catch(e){}}
+async function runPivot(){
+  await fetch('/api/clear',{method:'POST'}); document.getElementById('hook').textContent='Running...';
+  for(let id of['ATT-001','ATT-002','ATT-003']){await fetch('/api/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({attendeeId:id})}); await new Promise(r=>setTimeout(r,2500));}
+  const dup=await fetch('/api/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({attendeeId:'ATT-001'})});
+  const j=await dup.json(); alert(dup.status===409?'PIVOT TEST PASS ✅ Duplicate blocked!':'FAIL'); load();
+}
+async function clearDB(){await fetch('/api/clear',{method:'POST'}); location.reload();}
+setInterval(load,2000); load();
+</script></body></html>
