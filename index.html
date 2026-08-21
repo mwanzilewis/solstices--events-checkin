@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>Solstice Event Check-In</title>
+
+  <link
+    rel="stylesheet"
+    href="style.css"
+  >
+
+</head>
+
+
+<body>
+
+  <div class="container">
+
+    <h1>Solstice Events</h1>
+
+    <h2>Conference Check-In</h2>
+
+
+    <div class="scanner">
+
+      <label for="attendeeId">
+        Scan / Enter Attendee ID
+      </label>
+
+      <input
+        id="attendeeId"
+        placeholder="Example: A001"
+      >
+
+      <button onclick="checkIn()">
+        Check In
+      </button>
+
+    </div>
+
+
+    <div id="status"></div>
+
+
+    <h3>Test Attendees</h3>
+
+    <button onclick="quickCheckIn('A001')">
+      John - A001
+    </button>
+
+    <button onclick="quickCheckIn('A002')">
+      Mary - A002
+    </button>
+
+    <button onclick="quickCheckIn('A003')">
+      Brian - A003
+    </button>
+
+
+    <div id="attendees"></div>
+
+  </div>
+
+
+  <script src="app.js"></script>
+
+</body>
+
+</html>
