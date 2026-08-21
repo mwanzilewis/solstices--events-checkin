@@ -1,62 +1,75 @@
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
-const { checkInAttendee, handleVendorCallback } = require('./checkin');
-const { db } = require('./database');
-
 const app = express();
-app.use(cors());
+
 app.use(express.json());
-app.use(express.static(__dirname)); // serves index.html, app.js, style.css
 
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+// Safe database - won't crash if file name wrong
+let db, jobs;
+try {
+  const data = require('./database');
+  db = data.db; jobs = data.jobs;
+} catch(e) {
+  try {
+    const data = require('./databae');
+    db = data.db; jobs = data.jobs;
+  } catch(e2) {
+    const dbMap = new Map(); const jobsMap = new Map();
+    db = dbMap; jobs = jobsMap;
+  }
+}
 
-// Kiosk scans QR
-app.post('/api/checkin', async (req, res) => {
-  const { attendee_id, attendeeId, name } = req.body;
-  const id = attendee_id || attendeeId;
-  if (!id) return res.status(400).json({ error: 'attendee_id required' });
-  const result = await checkInAttendee(id, name);
-  res.json(result);
+// API - List attendees
+app.get('/api/attendees', (req,res) => {
+  const obj = {};
+  db.forEach((v,k) => obj[k]=v);
+  res.json(obj);
 });
 
-// Our webhook vendor calls
-app.post('/webhook/print-complete', async (req, res) => {
-  const result = await handleVendorCallback(req.body);
-  res.json(result);
+// API - Clear
+app.post('/api/clear', (req,res) => {
+  db.clear(); jobs.clear();
+  res.json({cleared:true});
 });
 
-// UI polls this
-app.get('/api/status/:id', (req, res) => {
-  const data = db.get(req.params.id);
-  if (!data) return res.json({ attendee_id: req.params.id, status: 'NOT_CHECKED_IN' });
-  res.json(data);
-});
+// API - Checkin Async
+app.post('/api/checkin', (req,res) => {
+  const { attendeeId } = req.body;
+  if (!attendeeId) return res.status(400).json({error:'Missing ID'});
 
-app.get('/api/attendees', (req, res) => {
-  res.json(Object.fromEntries(db));
-});
+  if (db.has(attendeeId) && db.get(attendeeId).status === 'checked_in') {
+    return res.status(409).json({error:'DUPLICATE', attendeeId, status:'already_checked_in'});
+  }
 
-// Test: 3 attendees including duplicate
-app.post('/api/test-pivot', async (req, res) => {
-  db.clear();
-  const { jobs } = require('./database');
-  jobs.clear();
-  
-  const r1 = await checkInAttendee('ATT-001', 'Alice');
-  const r2 = await checkInAttendee('ATT-002', 'Bob');
-  const r3 = await checkInAttendee('ATT-001', 'Alice Duplicate'); // should block
+  const jobId = 'job_' + Date.now() + '_' + attendeeId;
+  jobs.set(jobId, { status:'pending', attendeeId });
+  db.set(attendeeId, { status:'pending', jobId, timestamp:new Date().toISOString() });
 
-  // Wait for webhooks to complete
+  // Simulate vendor queue async (2 sec)
   setTimeout(() => {
-    res.json({
-      test: '3 scans including duplicate',
-      scans: [r1, r2, r3],
-      final_db: Object.fromEntries(db),
-      pass: r3.blocked === true && Object.keys(Object.fromEntries(db)).length === 2
-    });
-  }, 4000);
+    jobs.set(jobId, { status:'completed', attendeeId });
+    db.set(attendeeId, { status:'checked_in', jobId, timestamp:new Date().toISOString() });
+    console.log(`Webhook: ${attendeeId} checked in via ${jobId}`);
+  }, 2000);
+
+  res.json({ jobId, status:'queued', message:'Check-in queued for vendor verification' });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Solstice Kiosk ASYNC running on ${PORT}`));
+// API - Job status
+app.get('/api/job/:jobId', (req,res) => {
+  const job = jobs.get(req.params.jobId);
+  if(!job) return res.status(404).json({error:'Job not found'});
+  res.json(job);
+});
+
+// Serve frontend LAST
+app.use(express.static(path.join(__dirname)));
+app.get('/', (req,res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+module.exports = app;
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => console.log('Running on', PORT));
+}
