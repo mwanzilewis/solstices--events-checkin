@@ -1,1 +1,0 @@
-# solstices--events-checkin
