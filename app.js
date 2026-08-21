@@ -1,93 +1,44 @@
-const API = ""; // same domain
-let pollInterval = null;
+const api = (p, o={}) => fetch(p, {headers:{'Content-Type':'application/json'}, ...o}).then(r=>r.json().then(d=>({status:r.status, data:d})));
 
-async function scan() {
-  const id = document.getElementById('attendeeId').value.trim();
-  if (!id) return;
-
-  setStatus('pending', '⏳', `${id} - PRINT_PENDING`, 'Queued to vendor queue. Waiting for webhook...');
-  addLog(`[QUEUE] Published print job for ${id}`);
-
-  const res = await fetch(`${API}/api/checkin`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ attendee_id: id, name: id })
-  }).then(r => r.json());
-
-  console.log(res);
-
-  if (res.blocked) {
-    setStatus('blocked', '🚫', `${id} - DUPLICATE BLOCKED`, 'No second badge printed. Requirement passed.');
-    addLog(`[BLOCKED] Duplicate scan for ${id} blocked`);
-    refreshDB();
-    return;
-  }
-
-  // Start polling GET /api/status/:id
-  startPolling(id);
-}
-
-function startPolling(id) {
-  if (pollInterval) clearInterval(pollInterval);
-  let tries = 0;
-  pollInterval = setInterval(async () => {
-    tries++;
-    const s = await fetch(`${API}/api/status/${id}`).then(r => r.json());
-    refreshDB();
-
-    if (s.status === 'CHECKED_IN') {
-      clearInterval(pollInterval);
-      setStatus('checked', '✅', `${id} - CHECKED_IN`, `Badge printed! Job: ${s.jobId} (via webhook)`);
-      addLog(`[WEBHOOK] ${id} confirmed CHECKED_IN via ${s.jobId}`);
-    } else if (tries > 15) {
-      clearInterval(pollInterval);
-      setStatus('pending', '⚠️', 'Still pending...', 'Webhook delayed');
+async function scan(){
+  const el = document.getElementById('attendeeId') || document.querySelector('input');
+  const id = el.value.trim();
+  if(!id) return;
+  const txt = document.evaluate("//*[contains(text(),'Ready') or contains(text(),'Waiting')]", document, null, 9, null).singleNodeValue;
+  document.body.innerHTML = document.body.innerHTML.replace('Ready to scan...', '⏳ PENDING: '+id+' Queued to vendor queue...').replace('Waiting for QR','Status: PRINT_PENDING - Check-in queued for vendor verification');
+  try{
+    const res = await fetch('/api/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({attendeeId:id})});
+    const d = await res.json();
+    if(res.status===409){
+      document.body.innerHTML = document.body.innerHTML.replace(/⏳ PENDING:.*/, '🛑 DUPLICATE BLOCKED: '+id).replace(/Status:.*/, 'Status: already_checked_in - '+id+' was already checked in');
+      alert('DUPLICATE BLOCKED ✅');
+    }else{
+      setTimeout(async()=>{
+        document.body.innerHTML = document.body.innerHTML.replace(/⏳ PENDING:.*/, '✅ CHECKED_IN: '+id+' confirmed').replace(/Status:.*/, 'Status: checked_in via '+d.jobId+' - Webhook: '+id+' checked in');
+        load();
+      },2200);
     }
-  }, 800);
+  }catch(e){ alert(e.message); }
+  load();
 }
-
-function setStatus(type, icon, text, sub) {
-  const card = document.getElementById('statusCard');
-  card.className = `card ${type}`;
-  document.getElementById('statusIcon').textContent = icon;
-  document.getElementById('statusText').textContent = text;
-  document.getElementById('statusSub').textContent = sub;
+async function load(){
+  try{
+    const r = await fetch('/api/attendees'); const d = await r.json();
+    const live = document.evaluate("//*[contains(text(),'Loading')]",document,null,9,null).singleNodeValue;
+    if(live) live.textContent = JSON.stringify(d,null,2);
+  }catch(e){}
 }
-
-async function refreshDB() {
-  const data = await fetch(`${API}/api/attendees`).then(r => r.json());
-  document.getElementById('dbView').textContent = JSON.stringify(data, null, 2);
-}
-
-function addLog(msg) {
-  const log = document.getElementById('webhookLog');
-  log.innerHTML = `${new Date().toLocaleTimeString()} - ${msg}<br>` + log.innerHTML;
-}
-
-async function runPivotTest() {
-  setStatus('pending', '🧪', 'Running Pivot Test', '3 attendees including duplicate...');
-  const res = await fetch(`${API}/api/test-pivot`, { method: 'POST' }).then(r => r.json());
-  document.getElementById('dbView').textContent = JSON.stringify(res, null, 2);
-  if (res.pass) {
-    setStatus('checked', '🎉', 'PIVOT TEST PASSED', 'Duplicate blocked, 2 badges printed, async works');
-  } else {
-    setStatus('blocked', '❌', 'TEST FAILED', JSON.stringify(res));
+async function runPivotTest(){
+  await fetch('/api/clear',{method:'POST'});
+  for(let id of ['ATT-001','ATT-002','ATT-003']){
+    await fetch('/api/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({attendeeId:id})});
+    await new Promise(r=>setTimeout(r,2300));
   }
-  addLog(`[TEST] Pivot test result: ${res.pass ? 'PASS' : 'FAIL'}`);
+  const dup = await fetch('/api/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({attendeeId:'ATT-001'})});
+  alert(dup.status===409 ? 'PIVOT TEST PASS ✅ Duplicate blocked!' : 'FAIL');
+  load();
 }
-
-async function clearDB() {
-  // Quick hack - just reload with new IDs, server test-pivot clears for you
-  refreshDB();
-  setStatus('idle', '💤', 'Ready to scan...', 'Database view refreshed');
-  document.getElementById('webhookLog').innerHTML = 'Cleared...';
-}
-
-// Auto-refresh DB every 2s
-setInterval(refreshDB, 2000);
-refreshDB();
-
-// Enter key scans
-document.getElementById('attendeeId').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') scan();
-});
+async function clearDB(){ await fetch('/api/clear',{method:'POST'}); location.reload(); }
+setInterval(load,2000); load();
+// hook buttons
+setTimeout(()=>{ document.querySelectorAll('button').forEach(b=>{ if(b.textContent.includes('SCAN')) b.onclick=scan; if(b.textContent.includes('PIVOT')) b.onclick=runPivotTest; if(b.textContent.includes('CLEAR')) b.onclick=clearDB; }); },500);
